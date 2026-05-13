@@ -53,6 +53,29 @@ service firebase.storage {
       allow delete: if isSignedIn();
     }
 
+    // ─── Client documents (kundfiler) ─────────────────────────────
+    // Path: clients/{teamId}/{clientId}/{filename}
+    //
+    // Speglar projects/-mönstret. Vi kan inte cheap-check:a
+    // team-membership här (named database), så vi tar samma
+    // tradeoff: alla signed-in users kan läsa via URL (URL är inte
+    // enumererbar utan token), och Firestore-docen som wrapper
+    // länken är members-only.
+    match /clients/{teamId}/{clientId}/{filename} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 10 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf' ||
+          request.resource.contentType == 'application/msword' ||
+          request.resource.contentType.matches('application/vnd\\.openxmlformats.*') ||
+          request.resource.contentType == 'application/vnd.ms-excel' ||
+          request.resource.contentType.matches('text/.*')
+        );
+      allow delete: if isSignedIn();
+    }
+
     // ─── Chat attachments ─────────────────────────────────────────
     // Path: chats/{conversationId}/{filename}
     //
