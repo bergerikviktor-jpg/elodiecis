@@ -30,12 +30,14 @@ import {
   archiveProject,
   unarchiveProject,
   setProjectPhase,
+  updateProject,
 } from "@/lib/projects";
 import { PROJECT_PHASES } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 
 import FinanceTab from "@/components/projects/FinanceTab";
 import CreativeBoard from "@/components/projects/CreativeBoard";
+import ClientPicker from "@/components/clients/ClientPicker";
 
 const TABS = [
   { id: "overview", label: "Översikt", icon: LayoutDashboard },
@@ -246,7 +248,13 @@ export default function ProjectDetailPage() {
       {/* Tab content */}
       <div className="p-8 animate-fade-in">
         {tab === "overview" && (
-          <OverviewTab project={project} team={team} profiles={profiles} />
+          <OverviewTab
+            project={project}
+            team={team}
+            teamId={teamId}
+            profiles={profiles}
+            isArchived={isArchived}
+          />
         )}
         {tab === "board" && (
           <CreativeBoard
@@ -316,7 +324,38 @@ function PhaseSelect({ project, teamId, isArchived }) {
   );
 }
 
-function OverviewTab({ project, team, profiles }) {
+function OverviewTab({ project, team, teamId, profiles, isArchived }) {
+  const toast = useToast();
+  const [savingClient, setSavingClient] = useState(false);
+
+  /**
+   * Koppla projektet till en kund (eller koppla bort).
+   * updateProject hanterar cache-justering på client-doc atomärt.
+   * Vi uppdaterar även customerName för konsekvent visning i banner/lista.
+   */
+  const handleClientChange = async (client) => {
+    const newId = client?.id || null;
+    const oldId = project.clientId || null;
+    if (newId === oldId) return;
+
+    setSavingClient(true);
+    try {
+      const updates = { clientId: newId };
+      if (client?.companyName) {
+        updates.customerName = client.companyName;
+      }
+      await updateProject(teamId, project.id, updates);
+      toast.success(
+        client ? `Kopplat till ${client.companyName}.` : "Kund borttagen från projektet."
+      );
+    } catch (err) {
+      console.error("updateProject clientId failed", err);
+      toast.error(err.message || "Kunde inte spara kundkoppling.");
+    } finally {
+      setSavingClient(false);
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <Card className="lg:col-span-2">
@@ -334,35 +373,64 @@ function OverviewTab({ project, team, profiles }) {
         )}
       </Card>
 
-      <Card>
-        <h2 className="text-base font-heading text-slate-900 mb-3">Team</h2>
-        <p className="text-xs text-slate-500 font-mono mb-3">{team.name}</p>
-        <div className="space-y-2">
-          {(project.members || []).map((uid) => {
-            const p = profiles.get(uid);
-            const isLead = project.leadUid === uid;
-            return (
-              <div key={uid} className="flex items-center gap-2">
-                <Avatar
-                  name={p?.displayName}
-                  src={p?.photoURL}
-                  size="sm"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-body font-semibold text-slate-900 truncate">
-                    {p?.displayName || uid}
-                  </p>
-                  {isLead && (
-                    <p className="text-[9px] text-[#0052FF] font-mono uppercase tracking-widest">
-                      Projektledare
+      <div className="space-y-6">
+        <Card>
+          <h2 className="text-base font-heading text-slate-900 mb-3">Kund</h2>
+          <ClientPicker
+            teamId={teamId}
+            value={project.clientId || null}
+            onChange={handleClientChange}
+            label={null}
+            placeholder="Koppla till en CRM-kund..."
+            disabled={isArchived || savingClient}
+          />
+          {savingClient && (
+            <p className="text-[10px] text-slate-400 font-mono mt-2">
+              uppdaterar...
+            </p>
+          )}
+          {!project.clientId && project.customerName && (
+            <p className="text-[10px] text-slate-500 font-mono mt-2">
+              Lös text: <span className="text-slate-700">{project.customerName}</span>
+            </p>
+          )}
+          {isArchived && (
+            <p className="text-[10px] text-slate-400 font-mono mt-2 italic">
+              Kundkoppling låst — projektet är arkiverat.
+            </p>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="text-base font-heading text-slate-900 mb-3">Team</h2>
+          <p className="text-xs text-slate-500 font-mono mb-3">{team.name}</p>
+          <div className="space-y-2">
+            {(project.members || []).map((uid) => {
+              const p = profiles.get(uid);
+              const isLead = project.leadUid === uid;
+              return (
+                <div key={uid} className="flex items-center gap-2">
+                  <Avatar
+                    name={p?.displayName}
+                    src={p?.photoURL}
+                    size="sm"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-body font-semibold text-slate-900 truncate">
+                      {p?.displayName || uid}
                     </p>
-                  )}
+                    {isLead && (
+                      <p className="text-[9px] text-[#0052FF] font-mono uppercase tracking-widest">
+                        Projektledare
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

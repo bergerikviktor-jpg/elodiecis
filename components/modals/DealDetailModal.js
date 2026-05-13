@@ -21,6 +21,7 @@ import Button from "@/components/ui/Button";
 import Avatar from "@/components/ui/Avatar";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import Badge from "@/components/ui/Badge";
+import ClientPicker from "@/components/clients/ClientPicker";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -185,6 +186,24 @@ function DealDetailModalContent({
     await save({ deadline: Timestamp.fromDate(date) }, "deadline");
   };
 
+  /**
+   * Kopplar dealen till en kund (eller koppling till null).
+   * Bumpar kund-cache atomärt via updateDeal/_bumpClientDealsCount.
+   * Auto-fyller customerName från valda kunden för konsekvent visning.
+   */
+  const setClient = async (client) => {
+    const newId = client?.id || null;
+    const oldId = deal.clientId || null;
+    if (newId === oldId) return;
+
+    const updates = { clientId: newId };
+    if (client?.companyName) {
+      updates.customerName = client.companyName;
+      setCustomerName(client.companyName);
+    }
+    await save(updates, "clientId");
+  };
+
   /* ── Delete ──────────────────────────────────────────────────── */
 
   const handleDelete = async () => {
@@ -246,18 +265,38 @@ function DealDetailModalContent({
             </Badge>
           </div>
 
-          {/* Customer */}
+          {/* Customer — ClientPicker (koppla till CRM) + freeform fallback */}
           <FieldGroup icon={Building2} label="Kund">
-            <Input
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              onBlur={commitCustomerName}
-              maxLength={120}
-              placeholder="Företaget..."
-            />
-            {savingField === "customerName" && (
-              <p className="text-[10px] text-slate-400 font-mono mt-1">sparar...</p>
-            )}
+            <div className="space-y-2">
+              <ClientPicker
+                teamId={teamId}
+                value={deal.clientId || null}
+                onChange={setClient}
+                label={null}
+                placeholder="Koppla till befintlig kund..."
+                disabled={savingField === "clientId"}
+              />
+              <Input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                onBlur={commitCustomerName}
+                maxLength={120}
+                placeholder={
+                  deal.clientId
+                    ? "Hämtas automatiskt från kunden"
+                    : "Skriv kundnamn..."
+                }
+                disabled={!!deal.clientId}
+              />
+              {savingField === "clientId" && (
+                <p className="text-[10px] text-slate-400 font-mono">
+                  uppdaterar kundkoppling...
+                </p>
+              )}
+              {savingField === "customerName" && (
+                <p className="text-[10px] text-slate-400 font-mono">sparar...</p>
+              )}
+            </div>
           </FieldGroup>
 
           {/* Notes */}
