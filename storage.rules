@@ -1,0 +1,81 @@
+rules_version = '2';
+
+// ─── ElodieCIS Firebase Storage rules ──────────────────────────────
+//
+// Deploy with:
+//   firebase deploy --only storage
+//
+// Or paste into the Firebase Console:
+//   Storage → Rules
+//
+// Model:
+//   - Avatars live at avatars/{uid}/{filename}
+//   - Anyone signed in (verified) can READ any avatar — needed so other
+//     users see your photo in the friends list, search results, etc.
+//   - Only the owner can WRITE/DELETE their own avatars.
+//   - Uploads must be images and ≤ 5 MB.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null
+        && request.auth.token.email_verified == true;
+    }
+
+    match /avatars/{uid}/{filename} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ─── Project assets (receipts, cover images, board images) ───
+    // Path: projects/{teamId}/{projectId}/receipts/{filename}
+    //       projects/{teamId}/{projectId}/covers/{filename}
+    //       projects/{teamId}/{projectId}/board/{filename}
+    //
+    // Storage rules can't easily check team-membership against
+    // Firestore for a named database — primary protection lives at
+    // the Firestore message/expense level (URLs are wrapped in docs
+    // only readable by team members). Storage allows any signed-in
+    // user to read, with size + content-type limits on writes.
+    match /projects/{teamId}/{projectId}/{folder}/{filename} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 10 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf'
+        );
+      allow delete: if isSignedIn();
+    }
+
+    // ─── Chat attachments ─────────────────────────────────────────
+    // Path: chats/{conversationId}/{filename}
+    //
+    // Read: any signed-in user. Firebase Storage download URLs include
+    //   a token, but we can't cheaply check Firestore conversation
+    //   membership from Storage rules (named-database lookups aren't
+    //   supported). The real protection is at the Firestore message
+    //   level — only participants can read the message that contains
+    //   the URL. URLs alone aren't enumerable.
+    // Write: any signed-in user, max 25 MB. We don't enforce
+    //   conversation membership here for the same reason as above;
+    //   the Firestore message that wraps the URL is the source of
+    //   truth and only valid participants can post it.
+    match /chats/{conversationId}/{filename} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 25 * 1024 * 1024;
+      allow delete: if false;
+    }
+
+    // Default deny — any other path is off-limits.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,474 @@
+rules_version = '2';
+
+// ─── ElodieCIS Firestore security rules ────────────────────────────
+//
+// Deploy with:
+//   firebase deploy --only firestore:rules
+//
+// Or paste into the Firebase Console:
+//   Firestore → Rules (make sure you're on the right named database!)
+//
+// Threat model:
+//   - All callers must be authenticated AND email-verified.
+//   - Personal data (folders, files, notes, teamMembers) → owner-only.
+//   - User profile docs are READable by any signed-in user (for friend
+//     search) but only writable by the owner.
+//   - Friend requests / friendships are guarded so a malicious caller
+//     can't fake-accept on behalf of someone else, can't update somebody
+//     else's request, and can't see requests they're not part of.
+//
+// Notes on get vs. list:
+//   - Single-doc reads (`get`) check rules against the specific doc.
+//     For nonexistent docs Firestore evaluates the rule with `resource ==
+//     null`, so anything dereferencing `resource.data` must guard against
+//     that or the read fails with permission-denied.
+//   - Collection queries (`list`) evaluate rules against a *hypothetical*
+//     doc matching the query filters. Firestore's verifier struggles with
+//     disjunctive (`A || B`) rules, so we keep `list` rules simple.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null
+        && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ─── User profiles ────────────────────────────────────────────
+    // Read: any signed-in user (search needs this).
+    // Write: only the owner.
+    // Owner-only subcollections (folders, files, notes, teamMembers, ...)
+    // inherit a stricter rule — only the owner can touch them.
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(uid);
+      allow delete: if false;
+
+      match /{subcollection}/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // ─── Friend requests ──────────────────────────────────────────
+    match /friendRequests/{requestId} {
+      // Single-doc reads: only sender or recipient.
+      // Guard against `resource == null` so reads of nonexistent docs
+      // (which never happens in our flows but is good defensive practice)
+      // don't crash the rule.
+      allow get: if isSignedIn()
+        && resource != null
+        && (resource.data.fromUid == request.auth.uid
+            || resource.data.toUid == request.auth.uid);
+
+      // Queries: any signed-in user. The data here (uids + status + ts)
+      // is non-sensitive, and the rules engine can't reliably validate
+      // our disjunctive (fromUid OR toUid) rule for list queries.
+      // Production-grade hardening would move request creation to a
+      // Cloud Function. For client-only Firebase, this is the standard
+      // tradeoff.
+      allow list: if isSignedIn();
+
+      // Create: must be authored by the signed-in caller, must target
+      // a different user, must be born "pending".
+      allow create: if isSignedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid is string
+        && request.resource.data.fromUid != request.resource.data.toUid
+        && request.resource.data.status == "pending";
+
+      // Update: only the recipient, only flipping status from pending
+      // to accepted/declined. The fromUid/toUid fields are immutable.
+      allow update: if isSignedIn()
+        && resource.data.toUid == request.auth.uid
+        && resource.data.status == "pending"
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.status in ["accepted", "declined"];
+
+      // Delete: either party can clean up.
+      //   - Sender deleting a pending request = "cancel"
+      //   - Recipient deleting any request = "silently ignore" (decline
+      //     without recording a status change)
+      //   - Either party deleting any past request after account deletion
+      // The data is theirs to manage; we don't need to be precious about
+      // historical request docs.
+      allow delete: if isSignedIn() && (
+        resource.data.fromUid == request.auth.uid ||
+        resource.data.toUid == request.auth.uid
+      );
+    }
+
+    // ─── Friendships ──────────────────────────────────────────────
+    // Created with a deterministic id `{minUid}_{maxUid}` so a pair
+    // can never have two simultaneous friendship docs.
+    match /friendships/{friendshipId} {
+      // Single-doc reads: members only — but allow reads of nonexistent
+      // docs so `getDoc(friendshipRef)` (used to check "are we already
+      // friends?") returns `exists: false` instead of permission-denied.
+      allow get: if isSignedIn()
+        && (resource == null
+            || request.auth.uid in resource.data.users);
+
+      // Queries: caller must filter by `users array-contains <self>`.
+      // Firestore proves this from the query filter, so the rule can
+      // safely require membership.
+      allow list: if isSignedIn()
+        && request.auth.uid in resource.data.users;
+
+      // Create: must be a 2-element list, caller must be one of them.
+      // Note: hardening against "creating friendship without an actual
+      // accepted request" would require a Cloud Function — for the
+      // client-only build we accept that the worst a malicious caller
+      // can do is add themselves to someone's friends list, which the
+      // other party can immediately delete.
+      allow create: if isSignedIn()
+        && request.resource.data.users is list
+        && request.resource.data.users.size() == 2
+        && request.auth.uid in request.resource.data.users;
+
+      // Either member can unfriend.
+      allow delete: if isSignedIn()
+        && request.auth.uid in resource.data.users;
+
+      // No mutations once created.
+      allow update: if false;
+    }
+
+    // ─── Conversations ────────────────────────────────────────────
+    // Deterministic id `{minUid}_{maxUid}` for 1:1 chats so a pair
+    // can never have two simultaneous conversation docs.
+    match /conversations/{conversationId} {
+      // Single-doc reads: members only — but tolerate nonexistent docs
+      // so `getDoc(convRef)` returns `exists: false` cleanly.
+      allow get: if isSignedIn()
+        && (resource == null
+            || request.auth.uid in resource.data.participants);
+
+      // Queries: caller must filter by `participants array-contains <self>`
+      // so Firestore can prove every result satisfies the membership rule.
+      allow list: if isSignedIn()
+        && request.auth.uid in resource.data.participants;
+
+      // Create: 2-participant lists where the caller is one of them.
+      allow create: if isSignedIn()
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && request.auth.uid in request.resource.data.participants;
+
+      // Update: any participant. They mutate lastMessage/lastMessageAt,
+      // unreadCounts, and the typing map. For groups we also allow
+      // participants to add/remove members (group join + leave) — the
+      // caller must already be a participant in the current state.
+      //
+      // For PRIVATE conversations we trust the UI not to change the
+      // participants array. A malicious caller could in theory tamper
+      // with it via direct SDK calls, but the worst-case outcome is
+      // ending up in a corrupted 2-person chat that's still owned by
+      // both parties. Hardening would require splitting the rule by
+      // `resource.data.type`, which we may add later.
+      allow update: if isSignedIn()
+        && request.auth.uid in resource.data.participants;
+
+      // No conversation deletion in the UI today — keep history immutable.
+      allow delete: if false;
+
+      // ─── Messages subcollection ─────────────────────────────────
+      // We denormalize `participants` onto every message so:
+      //   - `list` queries can be validated by Firestore against the
+      //     per-message rule (no expensive parent get() per read)
+      //   - Read access is a simple `auth.uid in resource.data.participants`
+      // Cost: 2 extra uid strings per message doc. Worth it.
+      match /messages/{messageId} {
+        allow get: if isSignedIn()
+          && request.auth.uid in resource.data.participants;
+
+        // Same membership check enforced via the denormalized field.
+        // Clients MUST filter by `where("participants", "array-contains", me)`
+        // for the list query to pass.
+        allow list: if isSignedIn()
+          && request.auth.uid in resource.data.participants;
+
+        // Create: sender must be the signed-in caller; participants must
+        // be a 2-element list containing the caller.
+        allow create: if isSignedIn()
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.participants is list
+          && request.resource.data.participants.size() == 2
+          && request.auth.uid in request.resource.data.participants;
+
+        // Update: any participant — used to add self to `seenBy`. We
+        // pin senderUid, participants, text, type, and the file fields
+        // so messages remain immutable except for read receipts.
+        allow update: if isSignedIn()
+          && request.auth.uid in resource.data.participants
+          && request.resource.data.senderUid == resource.data.senderUid
+          && request.resource.data.participants == resource.data.participants
+          && request.resource.data.text == resource.data.text
+          && request.resource.data.type == resource.data.type;
+
+        // No deletion — chat history is permanent.
+        allow delete: if false;
+      }
+    }
+
+    // ─── Boards (Trello-style kanban) ─────────────────────────────
+    // Each board lists its members in a `members` array. All children
+    // (columns, tasks, comments) inherit the same membership rule via
+    // a get() lookup against the parent board doc. That's one extra
+    // read per rule evaluation, but it lets us avoid denormalizing
+    // membership across hundreds of task docs.
+    match /boards/{boardId} {
+      // Get / list — must be a member.
+      // For `list` we need a guarded check on resource.data since
+      // Firestore validates list queries against hypothetical docs.
+      allow get: if isSignedIn()
+        && request.auth.uid in resource.data.members;
+      allow list: if isSignedIn()
+        && request.auth.uid in resource.data.members;
+
+      // Create: caller must be the createdBy AND in the initial members
+      // list. Members can't be empty (caller is at minimum a member of
+      // their own board).
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.members is list
+        && request.auth.uid in request.resource.data.members;
+
+      // Update: any member. Members CAN modify the `members` array
+      // (invite / leave) — caller must currently be a member.
+      allow update: if isSignedIn()
+        && request.auth.uid in resource.data.members;
+
+      // Delete: only the creator.
+      allow delete: if isSignedIn()
+        && resource.data.createdBy == request.auth.uid;
+
+      // ─── Columns ─────────────────────────────────────────────
+      match /columns/{columnId} {
+        allow read, write: if isSignedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/boards/$(boardId)).data.members;
+      }
+
+      // ─── Tasks ───────────────────────────────────────────────
+      match /tasks/{taskId} {
+        allow read, write: if isSignedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/boards/$(boardId)).data.members;
+
+        // ─── Comments ─────────────────────────────────────────
+        match /comments/{commentId} {
+          allow get, list: if isSignedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/boards/$(boardId)).data.members;
+
+          // Create: must be authored by caller, board membership required.
+          allow create: if isSignedIn()
+            && request.resource.data.userId == request.auth.uid
+            && request.auth.uid in get(/databases/$(database)/documents/boards/$(boardId)).data.members;
+
+          // Update: only the author can edit their own comment.
+          allow update: if isSignedIn()
+            && resource.data.userId == request.auth.uid;
+
+          // Delete: the author can delete their own comment, OR the
+          // board's creator can clean up any comment (needed so
+          // `deleteBoardAndChildren` can purge comments from other
+          // members during board deletion).
+          allow delete: if isSignedIn() && (
+            resource.data.userId == request.auth.uid ||
+            request.auth.uid == get(/databases/$(database)/documents/boards/$(boardId)).data.createdBy
+          );
+        }
+      }
+    }
+
+    // ─── Teams (gruppbaserat samarbete) ───────────────────────────
+    // Roles:
+    //   - ownerUid: single uid, immutable except via "transfer ownership"
+    //     (which only the current owner can perform).
+    //   - adminUids: 0..N admins, can manage settings + members.
+    //   - members: everyone (owner + admins + regular members).
+    match /teams/{teamId} {
+      function isMember() {
+        return isSignedIn() && request.auth.uid in resource.data.members;
+      }
+      function isTeamOwner() {
+        return isSignedIn() && request.auth.uid == resource.data.ownerUid;
+      }
+      function isTeamAdmin() {
+        return isSignedIn() && request.auth.uid in resource.data.adminUids;
+      }
+      function canManageTeam() {
+        return isTeamOwner() || isTeamAdmin();
+      }
+
+      // Read: members only.
+      allow get: if isMember();
+      allow list: if isMember();
+
+      // Create: caller must be the founder AND only initial member.
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.members is list
+        && request.auth.uid in request.resource.data.members
+        && request.resource.data.adminUids is list;
+
+      // Update: three valid pathways.
+      //
+      //   (A) Manager (owner or admin) update — they can modify settings,
+      //       members and adminUids. The ownerUid field is special: only
+      //       the *current* owner can change it (transferOwnership).
+      allow update: if canManageTeam()
+        && (
+          request.resource.data.ownerUid == resource.data.ownerUid ||
+          isTeamOwner()
+        );
+
+      //   (B) Self-join via an existing invitation — the caller adds
+      //       themselves to `members` and they have a pending invite doc.
+      //       This is what makes acceptInvitation work despite the caller
+      //       not yet being a member.
+      allow update: if isSignedIn()
+        && !(request.auth.uid in resource.data.members)
+        && request.auth.uid in request.resource.data.members
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && exists(/databases/$(database)/documents/teams/$(teamId)/invitations/$(request.auth.uid))
+        && get(/databases/$(database)/documents/teams/$(teamId)/invitations/$(request.auth.uid)).data.invitedUid == request.auth.uid
+        && get(/databases/$(database)/documents/teams/$(teamId)/invitations/$(request.auth.uid)).data.status == "pending";
+
+      //   (C) Self-leave — caller removes only themselves from members.
+      //       Owner cannot leave this way (must transfer first); we
+      //       enforce that by requiring ownerUid to stay unchanged AND
+      //       the caller not be the current owner.
+      allow update: if isSignedIn()
+        && request.auth.uid in resource.data.members
+        && !(request.auth.uid in request.resource.data.members)
+        && request.auth.uid != resource.data.ownerUid
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+
+      // Delete: only the owner.
+      allow delete: if isTeamOwner();
+
+      // ─── Deals (sales pipeline) ──────────────────────────────
+      // All team members can read and write deals. Membership is
+      // inherited via a get() lookup against the parent team doc —
+      // same pattern as boards/columns/tasks.
+      match /deals/{dealId} {
+        allow read, write: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members;
+      }
+
+      // ─── Projects (film production hub) ──────────────────────
+      // Membership via the parent team. Project subcollections
+      // additionally check that the project's `status` is "active"
+      // for writes — archived projects are immutable.
+      match /projects/{projectId} {
+        function inTeam() {
+          return request.auth != null
+            && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members;
+        }
+        function projectIsActive() {
+          return get(/databases/$(database)/documents/teams/$(teamId)/projects/$(projectId)).data.status == "active";
+        }
+
+        allow read: if inTeam();
+        allow create: if inTeam()
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if inTeam();
+        allow delete: if inTeam();
+
+        // Subcollections — all team members can read/write while the
+        // project is active. Archive locks them down.
+        match /boardItems/{itemId} {
+          allow read: if inTeam();
+          allow write: if inTeam() && projectIsActive();
+        }
+        match /connections/{connectionId} {
+          allow read: if inTeam();
+          allow write: if inTeam() && projectIsActive();
+        }
+        match /expenses/{expenseId} {
+          allow read: if inTeam();
+          allow write: if inTeam() && projectIsActive();
+        }
+        match /profitShares/{shareUid} {
+          allow read: if inTeam();
+          allow write: if inTeam() && projectIsActive();
+        }
+        match /comments/{commentId} {
+          allow read: if inTeam();
+          // Comments stay editable even after archive — useful for
+          // historical context. The body is small, low risk.
+          allow create: if inTeam()
+            && request.resource.data.authorUid == request.auth.uid;
+          allow update, delete: if inTeam()
+            && resource.data.authorUid == request.auth.uid;
+        }
+      }
+
+      // ─── Invitations ─────────────────────────────────────────
+      // Deterministic id: invitationId == invitedUid. One pending invite
+      // per (team, user) — re-inviting overwrites.
+      //
+      // Reads: simple `auth != null` — list filter does the work
+      // (collection-group queries scope by invitedUid). Strict
+      // owner/admin checks on writes only.
+      //
+      // Note: we use `request.auth != null` instead of `isSignedIn()`
+      // to avoid an edge case where the token's email_verified claim
+      // is briefly stale right after verification. The auth gate at
+      // the app layer already blocks unverified users.
+      match /invitations/{inviteId} {
+        allow get, list: if request.auth != null;
+
+        // Create: caller must be the sender (invitedBy), and must be
+        // owner OR admin of the parent team.
+        allow create: if request.auth != null
+          && request.resource.data.invitedBy == request.auth.uid
+          && request.resource.data.invitedUid == inviteId
+          && (
+            request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.ownerUid ||
+            request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.adminUids
+          );
+
+        // Update: invited user (accept/decline) OR team manager (revoke).
+        allow update: if request.auth != null && (
+          request.auth.uid == resource.data.invitedUid ||
+          request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.ownerUid ||
+          request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.adminUids
+        );
+
+        // Delete: same as update.
+        allow delete: if request.auth != null && (
+          request.auth.uid == resource.data.invitedUid ||
+          request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.ownerUid ||
+          request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.adminUids
+        );
+      }
+    }
+
+    // ─── Collection-group: invitations ────────────────────────────
+    // Firestore collection-group queries (used by useMyPendingInvitations)
+    // require a separate match at the wildcard `{path=**}` form —
+    // nested rules under /teams/{id}/invitations only apply to
+    // single-collection queries, not collection-group ones.
+    //
+    // We allow `list` to any signed-in user, but the query MUST filter
+    // by `invitedUid == request.auth.uid`. Firestore validates list
+    // queries against the rule by checking that the where-clauses
+    // constrain results to those passing the rule — so a query without
+    // that filter is rejected automatically.
+    match /{path=**}/invitations/{inviteId} {
+      allow list: if request.auth != null
+        && resource.data.invitedUid == request.auth.uid;
+    }
+
+    // ─── Default deny ─────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

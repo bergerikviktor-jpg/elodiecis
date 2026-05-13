@@ -1,0 +1,254 @@
+@import url("https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+
+/* ─── ElodieCIS — Minimalist Modern Design System ────────────────── */
+
+@theme inline {
+  /* Typography — Dual Font + Mono */
+  --font-heading: "Onest", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Canvas & Surfaces */
+  --color-background: #FAFAFA;
+  --color-foreground: #0F172A;
+  --color-surface: #FFFFFF;
+  --color-muted: #F1F5F9;
+
+  /* Accent — Electric Blue */
+  --color-accent: #0052FF;
+  --color-accent-secondary: #4D7CFF;
+  --color-accent-foreground: #FFFFFF;
+
+  /* Sidebar (dark, preserved) */
+  --color-sidebar-bg: #0F172A;
+  --color-sidebar-border: rgba(255, 255, 255, 0.08);
+
+  /* Text */
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #64748B;
+  --color-text-muted: #94A3B8;
+
+  /* Borders */
+  --color-border: #E2E8F0;
+  --color-border-hover: #CBD5E1;
+
+  /* Semantic */
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+
+  /* Shadows — Blue-tinted for brand consistency */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1);
+  --shadow-accent: 0 4px 14px rgba(0, 82, 255, 0.25);
+  --shadow-accent-lg: 0 8px 24px rgba(0, 82, 255, 0.35);
+
+  --sidebar-width: 260px;
+}
+
+/* ─── Base ───────────────────────────────────────────────────────── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E1 transparent;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: normal;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+/* ─── Gradient Text (Electric Blue) ──────────────────────────────── */
+
+.text-gradient-accent {
+  background: linear-gradient(to right, #0052FF, #4D7CFF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-fire {
+  background: linear-gradient(to right, #0052FF, #4D7CFF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Legacy alias */
+.text-gradient-btc {
+  background: linear-gradient(to right, #0052FF, #4D7CFF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Shadow Utilities ───────────────────────────────────────────── */
+
+.shadow-soft { box-shadow: var(--shadow-sm); }
+.shadow-card { box-shadow: var(--shadow-md); }
+.shadow-hover { box-shadow: var(--shadow-lg); }
+.shadow-elevated { box-shadow: var(--shadow-xl); }
+.shadow-glow { box-shadow: var(--shadow-accent); }
+.shadow-glow-intense { box-shadow: var(--shadow-accent-lg); }
+.shadow-button { box-shadow: var(--shadow-accent); }
+
+/* ─── Focus ──────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-accent);
+  border-radius: 8px;
+}
+
+/* ─── Animations ─────────────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+@keyframes ping-dot {
+  0% { transform: scale(1); opacity: 0.8; }
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+@keyframes slow-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+.animate-fade-in-up { animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slide-in-up { animation: slideInUp 0.4s ease-out forwards; }
+.animate-float { animation: float 5s ease-in-out infinite; }
+.animate-pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+.animate-slow-rotate { animation: slow-rotate 60s linear infinite; }
+
+/* Stagger */
+.stagger-children > * { opacity: 0; animation: fadeIn 0.35s ease-out forwards; }
+.stagger-children > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.3s; }
+.stagger-children > *:nth-child(7) { animation-delay: 0.35s; }
+.stagger-children > *:nth-child(8) { animation-delay: 0.4s; }
+
+/* ─── Scrollbar ──────────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* ─── Pipeline (hide native scrollbar) ───────────────────────────── */
+
+.pipeline-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pipeline-scroll::-webkit-scrollbar { display: none; }
+
+/* ─── Pipeline Slider ────────────────────────────────────────────── */
+
+.pipeline-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: #E2E8F0;
+  outline: none;
+  cursor: pointer;
+}
+
+.pipeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px;
+  height: 14px;
+  border-radius: 7px;
+  background: #94A3B8;
+  cursor: grab;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.pipeline-slider::-webkit-slider-thumb:hover {
+  background: #0052FF;
+  box-shadow: 0 0 10px rgba(0, 82, 255, 0.35);
+}
+
+.pipeline-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  background: #0052FF;
+  box-shadow: 0 0 14px rgba(0, 82, 255, 0.5);
+}
+
+.pipeline-slider::-moz-range-thumb {
+  width: 80px;
+  height: 14px;
+  border-radius: 7px;
+  border: none;
+  background: #94A3B8;
+  cursor: grab;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.pipeline-slider::-moz-range-thumb:hover {
+  background: #0052FF;
+  box-shadow: 0 0 10px rgba(0, 82, 255, 0.35);
+}
+
+.pipeline-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+  background: #E2E8F0;
+}
+
+/* ─── Scroll hint animation ──────────────────────────────────────── */
+
+@keyframes scrollHint {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(12px); }
+  50% { transform: translateX(0); }
+  75% { transform: translateX(-12px); }
+}
+
+.animate-scroll-hint {
+  animation: scrollHint 2s ease-in-out infinite;
+}
+
