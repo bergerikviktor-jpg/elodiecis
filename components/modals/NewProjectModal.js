@@ -7,6 +7,7 @@ import { Building2, Briefcase, Tag, Wallet, FileText } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
+import ClientPicker from "@/components/clients/ClientPicker";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { createProject, PROJECT_ACCENTS } from "@/lib/projects";
@@ -19,6 +20,7 @@ export default function NewProjectModal({ isOpen, onClose, teamId }) {
   const toast = useToast();
 
   const [title, setTitle] = useState("");
+  const [clientId, setClientId] = useState(null);
   const [customerName, setCustomerName] = useState("");
   const [description, setDescription] = useState("");
   const [productionType, setProductionType] = useState("video");
@@ -30,6 +32,7 @@ export default function NewProjectModal({ isOpen, onClose, teamId }) {
   useEffect(() => {
     if (!isOpen) {
       setTitle("");
+      setClientId(null);
       setCustomerName("");
       setDescription("");
       setProductionType("video");
@@ -39,6 +42,11 @@ export default function NewProjectModal({ isOpen, onClose, teamId }) {
       setSubmitting(false);
     }
   }, [isOpen]);
+
+  const handleClientChange = (client) => {
+    setClientId(client?.id || null);
+    if (client?.companyName) setCustomerName(client.companyName);
+  };
 
   const trimmedTitle = title.trim();
   const budgetNumber = totalBudget === "" ? 0 : Number(totalBudget.replace(/\s/g, ""));
@@ -60,6 +68,7 @@ export default function NewProjectModal({ isOpen, onClose, teamId }) {
     try {
       const projectId = await createProject(teamId, user.uid, {
         title: trimmedTitle,
+        clientId,
         customerName: customerName.trim(),
         description: description.trim(),
         productionType,
@@ -91,13 +100,23 @@ export default function NewProjectModal({ isOpen, onClose, teamId }) {
           required
         />
 
+        {/* Kund-väljare (valfri — annars freeform kundnamn) */}
+        <ClientPicker
+          teamId={teamId}
+          value={clientId}
+          onChange={handleClientChange}
+          label="Kund (valfritt)"
+          placeholder="Välj befintlig kund eller hoppa över..."
+          disabled={submitting}
+        />
+
         <Input
-          label={<FieldLabel icon={Building2} text="Kund" />}
+          label={<FieldLabel icon={Building2} text="Kundnamn (om ingen kund vald)" />}
           placeholder="t.ex. Adidas"
           value={customerName}
           onChange={(e) => setCustomerName(e.target.value)}
           maxLength={120}
-          disabled={submitting}
+          disabled={submitting || !!clientId}
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

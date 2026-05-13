@@ -15,6 +15,7 @@ import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/FormFields";
 import Avatar from "@/components/ui/Avatar";
+import ClientPicker from "@/components/clients/ClientPicker";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useUserProfiles } from "@/lib/useChatData";
@@ -38,6 +39,7 @@ export default function NewDealModal({
   const toast = useToast();
 
   // Form state
+  const [clientId, setClientId] = useState(null);
   const [customerName, setCustomerName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [productionType, setProductionType] = useState("video");
@@ -55,6 +57,7 @@ export default function NewDealModal({
   // Reset whenever modal opens
   useEffect(() => {
     if (!isOpen) return;
+    setClientId(null);
     setCustomerName("");
     setProjectName("");
     setProductionType("video");
@@ -65,6 +68,15 @@ export default function NewDealModal({
     setError("");
     setSubmitting(false);
   }, [isOpen, user]);
+
+  const handleClientChange = (client) => {
+    setClientId(client?.id || null);
+    if (client?.companyName) {
+      // Auto-fyll kundnamn när en kund väljs — användaren kan
+      // fortfarande redigera, men slipper skriva om.
+      setCustomerName(client.companyName);
+    }
+  };
 
   // Member-options for the owner-dropdown, sorted by name
   const ownerOptions = useMemo(() => {
@@ -114,6 +126,7 @@ export default function NewDealModal({
         notes,
         stage: defaultStage,
         order: 0, // caller can override; renumber-on-drag handles it anyway
+        clientId,
       });
       toast.success(`"${trimmedProject}" har lagts till.`);
       onCreated?.(dealId);
@@ -134,7 +147,17 @@ export default function NewDealModal({
       size="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Kund & projekt */}
+        {/* Kund-väljare (valfri — annars freeform kundnamn) */}
+        <ClientPicker
+          teamId={team?.id}
+          value={clientId}
+          onChange={handleClientChange}
+          label="Kund (valfritt)"
+          placeholder="Välj befintlig kund eller hoppa över..."
+          disabled={submitting}
+        />
+
+        {/* Kundnamn + projektnamn */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label={<FieldLabel icon={Building2} text="Kundnamn" />}
@@ -142,8 +165,8 @@ export default function NewDealModal({
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
             maxLength={120}
-            disabled={submitting}
-            autoFocus
+            disabled={submitting || !!clientId}
+            autoFocus={!clientId}
             required
           />
           <Input
@@ -153,6 +176,7 @@ export default function NewDealModal({
             onChange={(e) => setProjectName(e.target.value)}
             maxLength={200}
             disabled={submitting}
+            autoFocus={!!clientId}
             required
           />
         </div>
