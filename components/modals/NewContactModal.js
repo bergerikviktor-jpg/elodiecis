@@ -107,6 +107,7 @@ export default function NewContactModal({
       title={isEdit ? "Redigera kontakt" : "Ny kontakt"}
       subtitle={isEdit ? "// client.contact.update()" : "// client.contact.add()"}
       size="lg"
+      className="min-h-[800px]"
     >
       <form onSubmit={handleSubmit} className="space-y-8 py-2">
         {/* Sektion: Personuppgifter */}
