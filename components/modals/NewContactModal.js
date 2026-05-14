@@ -105,7 +105,7 @@ export default function NewContactModal({
       onClose={close}
       title={isEdit ? "Redigera kontakt" : "Ny kontakt"}
       subtitle={isEdit ? "// client.contact.update()" : "// client.contact.add()"}
-      size="md"
+      size="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
