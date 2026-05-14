@@ -9,18 +9,19 @@ import { useEffect, useCallback } from "react";
  *
  * Layout-strategi:
  *   - Yttre wrappern är ett fullskärms-flex-overlay med padding (`p-4`).
- *     Padding säkrar att modulen aldrig kletar i kanten.
- *   - Själva modal-rutan är flex-column med `max-h-full` (= max viewport
- *     - p-4 på vardera sida = 100vh - 32px). Den blir aldrig högre än
- *     viewport, så centreringen via `items-center` kan inte klippa
- *     topp/botten.
- *   - Title-baren har `shrink-0` så den syns alltid.
- *   - Content-området är `flex-1 min-h-0 overflow-y-auto` så det fyller
- *     resterande höjd och scrollar internt vid behov.
+ *   - Modal-rutan sizar sig till content height, men content-området
+ *     är hårt kapat med max-h så modulen aldrig blir högre än viewport
+ *     (med marginal för title-bar och padding).
  *
- *   `min-h-0` är kritisk: utan den ärver flex-childen sin innehållshöjd
- *   och spränger föräldern, vilket återinför topp/botten-klippet vi
- *   precis fixade.
+ *     `max-h-[calc(100dvh-9rem)]` på content-området är medvetet vald:
+ *       100dvh = dynamic viewport, hanterar mobil-browser-chrome korrekt
+ *       9rem (144px) reserveras för title-bar (~80px) + outer p-4
+ *       (32px) + buffer (32px) så title aldrig klipps.
+ *
+ *     Tidigare hade vi `flex-1 min-h-0 overflow-y-auto` här, men den
+ *     kombinationen har en känd CSS-quirk där flex-childen inte växer
+ *     när föräldern saknar fixerad höjd. Den nuvarande explicit-max-h
+ *     är förutsägbar i alla browsers.
  */
 export default function Modal({ isOpen, onClose, title, subtitle, children, size = "md", className }) {
   const sizes = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl", full: "max-w-[90vw]" };
@@ -38,11 +39,11 @@ export default function Modal({ isOpen, onClose, title, subtitle, children, size
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       <div className={cn(
-        "relative w-full max-h-full flex flex-col rounded-2xl bg-white border border-slate-200 shadow-hover animate-slide-in-up",
+        "relative w-full rounded-2xl bg-white border border-slate-200 shadow-hover animate-slide-in-up overflow-hidden",
         sizes[size], className
       )}>
         {title && (
-          <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-slate-200 shrink-0">
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-slate-200">
             <div className="min-w-0">
               <h2 className="text-lg font-heading text-slate-900 truncate">{title}</h2>
               {subtitle && <p className="text-sm text-slate-500 mt-0.5 font-mono truncate">{subtitle}</p>}
@@ -52,7 +53,7 @@ export default function Modal({ isOpen, onClose, title, subtitle, children, size
             </button>
           </div>
         )}
-        <div className="px-6 py-4 flex-1 min-h-0 overflow-y-auto">{children}</div>
+        <div className="px-6 py-4 max-h-[calc(100dvh-9rem)] overflow-y-auto">{children}</div>
       </div>
     </div>
   );
