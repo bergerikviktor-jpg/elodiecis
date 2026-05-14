@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/FormFields";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { addContact, updateContact } from "@/lib/clients";
+import { cn } from "@/lib/utils";
 
 /**
  * Skapa eller redigera en kontaktperson.
@@ -107,65 +108,98 @@ export default function NewContactModal({
       subtitle={isEdit ? "// client.contact.update()" : "// client.contact.add()"}
       size="lg"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="space-y-8 py-2">
+        {/* Sektion: Personuppgifter */}
+        <Section
+          title="Personuppgifter"
+          description="Vem är personen — namn och roll på företaget."
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label={<FieldLabel icon={User} text="Förnamn" />}
+              placeholder="Anna"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              maxLength={100}
+              disabled={submitting}
+              autoFocus
+            />
+            <Input
+              label={<FieldLabel icon={User} text="Efternamn" />}
+              placeholder="Andersson"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              maxLength={100}
+              disabled={submitting}
+            />
+          </div>
           <Input
-            label={<FieldLabel icon={User} text="Förnamn" />}
-            placeholder="Anna"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            maxLength={100}
-            disabled={submitting}
-            autoFocus
-          />
-          <Input
-            label={<FieldLabel icon={User} text="Efternamn" />}
-            placeholder="Andersson"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            maxLength={100}
-            disabled={submitting}
-          />
-        </div>
-        <Input
-          label={<FieldLabel icon={Briefcase} text="Titel / roll" />}
-          placeholder="Marknadschef"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={150}
-          disabled={submitting}
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input
-            label={<FieldLabel icon={Mail} text="E-post" />}
-            type="email"
-            placeholder="anna@bolaget.se"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            maxLength={200}
+            label={<FieldLabel icon={Briefcase} text="Titel / roll" />}
+            placeholder="Marknadschef, COO, Inköpare..."
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={150}
             disabled={submitting}
           />
-          <Input
-            label={<FieldLabel icon={Phone} text="Telefon" />}
-            placeholder="+46 70 123 45 67"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            maxLength={50}
-            disabled={submitting}
-          />
-        </div>
+        </Section>
 
-        <label className="inline-flex items-center gap-2 text-xs font-mono text-slate-600 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={isPrimary}
-            onChange={(e) => setIsPrimary(e.target.checked)}
-            disabled={submitting}
-            className="rounded border-slate-300 text-[#0052FF] focus:ring-[#0052FF]/20"
-          />
-          <Star className="w-3.5 h-3.5" />
-          Markera som primärkontakt
-        </label>
+        {/* Sektion: Kontaktuppgifter */}
+        <Section
+          title="Kontaktuppgifter"
+          description="Hur du når personen direkt."
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label={<FieldLabel icon={Mail} text="E-post" />}
+              type="email"
+              placeholder="anna@bolaget.se"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              maxLength={200}
+              disabled={submitting}
+            />
+            <Input
+              label={<FieldLabel icon={Phone} text="Telefon" />}
+              placeholder="+46 70 123 45 67"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              maxLength={50}
+              disabled={submitting}
+            />
+          </div>
+        </Section>
+
+        {/* Sektion: Inställningar */}
+        <Section
+          title="Inställningar"
+          description="Primärkontakten visas högst upp på kundkortet."
+        >
+          <label
+            className={cn(
+              "flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-colors",
+              isPrimary
+                ? "border-[#0052FF] bg-blue-50"
+                : "border-slate-200 bg-white hover:border-slate-300"
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={isPrimary}
+              onChange={(e) => setIsPrimary(e.target.checked)}
+              disabled={submitting}
+              className="rounded border-slate-300 text-[#0052FF] focus:ring-[#0052FF]/20"
+            />
+            <Star
+              className={cn(
+                "w-4 h-4",
+                isPrimary ? "text-[#0052FF]" : "text-slate-400"
+              )}
+            />
+            <span className="text-sm font-body text-slate-700">
+              Markera som primärkontakt
+            </span>
+          </label>
+        </Section>
 
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
@@ -173,12 +207,12 @@ export default function NewContactModal({
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
           <Button variant="ghost" type="button" onClick={close} disabled={submitting}>
             Avbryt
           </Button>
           <Button type="submit" loading={submitting} disabled={!canSubmit}>
-            {isEdit ? "Spara" : "Lägg till"}
+            {isEdit ? "Spara ändringar" : "Lägg till kontakt"}
           </Button>
         </div>
       </form>
@@ -192,5 +226,26 @@ function FieldLabel({ icon: Icon, text }) {
       <Icon className="w-3 h-3" />
       {text}
     </span>
+  );
+}
+
+/**
+ * Sektion med rubrik + beskrivning + innehåll, separerad från andra
+ * sektioner med ett tunt avgränsnings-streck. Ger formuläret en
+ * tydligare visuell hierarki och fyller höjd utan att kännas tomt.
+ */
+function Section({ title, description, children }) {
+  return (
+    <section className="space-y-4">
+      <div className="space-y-1 pb-2 border-b border-slate-100">
+        <h3 className="text-xs font-mono font-semibold text-slate-900 uppercase tracking-widest">
+          {title}
+        </h3>
+        {description && (
+          <p className="text-xs text-slate-500 font-body">{description}</p>
+        )}
+      </div>
+      {children}
+    </section>
   );
 }
